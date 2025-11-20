@@ -15,6 +15,7 @@
     position: relative;
     cursor: pointer;
     background-color: white;
+    touch-action: manipulation;
 }
 
 .cardButtonText {
@@ -25,6 +26,7 @@
     cursor: pointer;
     font-size:calc(0.7*var(--card-size));
     user-select:none;
+    touch-action: manipulation;
 }
 
 .cardButton.selected {
@@ -43,17 +45,23 @@
   cursor: pointer;
   display: inline-block;
   user-select: none;
+  touch-action: manipulation;
+}
+
+#startRoundButton {
+    font-size:8vmin;
 }
 
 #topBar {
-    margin-bottom: 2vmin;
+    margin-bottom: 1vmin;
 }
 
 #cardRows {
     border-top: 1vmin solid #444;
     border-bottom: 1vmin solid #444;
-    padding-top:3vmin;
-    padding-bottom: 3vmin;
+    padding-top:2vmin;
+    padding-bottom: 2vmin;
+    min-height:calc(min(60vh,90vw));
 }
 
 #howToPlayButton {
@@ -68,6 +76,12 @@
     font-size: 5vmin;
 }
 
+#roundInProgressButtons .button {
+    font-size:8vmin;
+    padding: 3vmin 2vmin;
+}
+
+/*
 #roundInProgressButtons {
     position:fixed; 
     bottom:0px;
@@ -75,11 +89,11 @@
     transform: translate(-50%, 0); 
     margin-bottom: 2vmin;
     width:max-content;
-}
+} */
 
 #roundInProgressSummary {
     padding: 1vmin 2vmin;
-    width: 50vmin;
+    font-size:6vmin;
     margin: 1vmin auto;
 }
 
@@ -295,7 +309,7 @@ class CardGameRound {
     startRound() {
         document.getElementById("roundOverSummary").style.innerHTML = "";
         document.getElementById("roundOver").style.display = "none";
-        document.getElementById("roundInProgressSummary").innerHTML = "Target Total : " + this.targetSum;
+        document.getElementById("roundInProgressSummary").innerHTML = "Add and subtract to make " + this.targetSum;
         document.getElementById("roundInProgressContent").style.display = "block";
 
         while(this.solutions.length == 0) {
@@ -370,11 +384,10 @@ class CardGameRound {
         textSummary += this.targetSum;
 
         if (sum == this.targetSum && subtractedCount == 0) {
-            textSummary += " <span style='color:green'>&#x1F5F9;</span>";
-            textSummary += "<br /><span style='color:red'>(Need to subtract at least 1 number, too)</span>";
+            textSummary = "<span style='color:red;font-size:5vmin;'>(Need to subtract at least 1 number, too)</span>";
         }
         if (addedCount + subtractedCount == 0) {
-            textSummary = "Target Total : " + this.targetSum;
+            textSummary = "Add and subtract to make " + this.targetSum;
         }
         document.getElementById("roundInProgressSummary").innerHTML = textSummary;
         
@@ -415,8 +428,7 @@ class CardGameRound {
             this.handleLoss();
             return;
         }
-
-        let cardSize = Math.min((this.cardsDealtCount + 1)*10 + 30,90) / (this.cardsDealtCount + 1) + "vmin";
+        let cardSize = "calc(min(60vh/3,90vw/" + (this.cardsDealtCount+1)+"))";
 
         document.querySelector(':root').style.setProperty("--card-size", cardSize);
 
@@ -523,8 +535,7 @@ class CardGameRound {
 
     <div id="roundOver">
         <div id="roundOverSummary"></div>
-        <div onclick="game.startNewRound();" class="button" id="startRoundButton" style="position:fixed; bottom:0px;left: 50%;
-  transform: translate(-50%, 0); margin-bottom: 2vmin;">Go Again</div>
+        <div onclick="game.startNewRound();" class="button" id="startRoundButton">Go Again</div>
     </div>
     
 </div>
