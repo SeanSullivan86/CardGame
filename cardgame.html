@@ -1,0 +1,537 @@
+<html>
+
+<head>
+<style>
+
+:root {
+  --card-size: 20vmin;
+}
+
+.cardButton {
+    display: inline-block;
+    width: var(--card-size);
+    aspect-ratio: 1 / 1;
+    border: 1px solid black;
+    position: relative;
+    cursor: pointer;
+    background-color: white;
+}
+
+.cardButtonText {
+    position:absolute;
+    top: 50%;
+    right: 50%;
+    transform: translate(50%, -50%);
+    cursor: pointer;
+    font-size:calc(0.7*var(--card-size));
+    user-select:none;
+}
+
+.cardButton.selected {
+    background-color: lightgreen;
+}
+
+.button {
+  background-color: #04AA6D;
+  border: 1px solid green;
+  color: white;
+  padding: 1vmin 2vmin;
+  text-align: center;
+  text-decoration: none;
+
+  font-size: 5vmin;
+  cursor: pointer;
+  display: inline-block;
+  user-select: none;
+}
+
+#topBar {
+    margin-bottom: 2vmin;
+}
+
+#cardRows {
+    border-top: 1vmin solid #444;
+    border-bottom: 1vmin solid #444;
+    padding-top:3vmin;
+    padding-bottom: 3vmin;
+}
+
+#howToPlayButton {
+    background-color: #888;
+    border: 0px;
+    font-size: 5vmin;
+}
+
+#statsButton {
+    background-color: #888;
+    border: 0px;
+    font-size: 5vmin;
+}
+
+#roundInProgressButtons {
+    position:fixed; 
+    bottom:0px;
+    left: 50%;
+    transform: translate(-50%, 0); 
+    margin-bottom: 2vmin;
+    width:max-content;
+}
+
+#roundInProgressSummary {
+    padding: 1vmin 2vmin;
+    width: 50vmin;
+    margin: 1vmin auto;
+}
+
+#gameDisplay {
+    text-align:center;
+}
+
+.youLoseTable {
+    display: inline-block;
+}
+.youLoseTable td {
+    padding: 1vmin 1vmin;
+}
+
+.loseWarning {
+    display: inline-block;
+    color: red;
+    font-weight: bold;
+    font-size: 6vmin;
+}
+
+.youWinLabel {
+    display: inline-block;
+    color: green;
+    font-weight: bold;
+    font-size: 6vmin;
+}
+
+.solutionList {
+    text-align: right;
+    display: inline-block;
+}
+
+</style>
+
+
+<script>
+var game;
+
+function initialize() {
+    game = new CardGame();
+    game.startNewRound();
+}
+
+class GameSolution {
+    addedCards;
+    subtractedCards;
+
+    constructor(addedCards, subtractedCards) {
+        this.addedCards = addedCards;
+        this.subtractedCards = subtractedCards;
+    }
+
+    getAsText() {
+        return this.addedCards.join(" + ") + " - " + this.subtractedCards.join(" - ")
+    }
+}
+
+class GameStats {
+    // with exactly X cards shown, get count of outcomes (Win, CorrectlyDealNext, Lose) , and time spent
+    outcomeCountsByNumberOfCardsDealt;
+    timeSpentFrequencies;
+    maxDealableCards;
+
+    static createNew(maxDealableCards) {
+        let x = new GameStats();
+        x.maxDealableCards = maxDealableCards;
+        x.outcomeCountsByNumberOfCardsDealt = new Array(maxDealableCards+1);
+        x.timeSpentFrequencies = new Array(maxDealableCards+1);
+        for (let i = 0; i <= maxDealableCards; i++) {
+            x.outcomeCountsByNumberOfCardsDealt[i] = {
+                win : 0,
+                correctlyChoseDeal : 0,
+                lose : 0
+            };
+            x.timeSpentFrequencies[i] = new Array(300);
+            x.timeSpentFrequencies[i].fill(0);
+        }
+        return x;
+    }
+    
+    getTotalWins() {
+        let wins = 0;
+        for (let i = 3; i <= this.maxDealableCards; i++) {
+            wins += this.outcomeCountsByNumberOfCardsDealt[i].win;
+        }
+        return wins;
+    }
+    
+    getTotalLosses() {
+        let losses = 0;
+        for (let i = 3; i <= this.maxDealableCards; i++) {
+            losses += this.outcomeCountsByNumberOfCardsDealt[i].lose;
+        }
+        return losses;
+    }
+
+    addRoundOutcome(roundOutcome) {
+        let cards = roundOutcome.allCards.length;
+        for (let i = 3; i < cards; i++) {
+            this.timeSpentFrequencies[i][Math.min(Math.floor(roundOutcome.timeSpentPerCard[i-1] / 100), 299)]++;
+            this.outcomeCountsByNumberOfCardsDealt[i].correctlyChoseDeal = this.outcomeCountsByNumberOfCardsDealt[i].correctlyChoseDeal + 1;
+        }
+        this.timeSpentFrequencies[cards][Math.min(Math.floor(roundOutcome.timeSpentPerCard[cards-1] / 100), 299)]++;
+        if (roundOutcome.didPlayerWin) {
+            this.outcomeCountsByNumberOfCardsDealt[cards].win = this.outcomeCountsByNumberOfCardsDealt[cards].win + 1;
+        } else {
+            this.outcomeCountsByNumberOfCardsDealt[cards].lose = this.outcomeCountsByNumberOfCardsDealt[cards].lose + 1;
+        }
+
+    }
+
+    getMedianTimes() {
+        let x = new Array(this.maxDealableCards+1);
+        for (let i = 3; i <= this.maxDealableCards; i++) {
+            let outcomes = this.outcomeCountsByNumberOfCardsDealt[i];
+            let total = outcomes.win + outcomes.correctlyChoseDeal + outcomes.lose;
+            if (total == 0) { x[i] = undefined; continue; }
+            x[i] = this.getMedianIndexOfFrequencyArray(this.timeSpentFrequencies[i], total);
+        }
+        return x;
+    }
+
+    getMedianIndexOfFrequencyArray(x, sum) {
+        let n = x.length;
+        if (sum % 2 == 1) {
+            let count = 0, target = (sum + 1)/2;
+            for (let i = 0; i < n; i++) {
+                count += x[i];
+                if (count >= target) {
+                    return i;
+                }
+            }
+        } else {
+            let count = 0, target = sum / 2;
+            let leftMedian = 0, rightMedian = 0;
+            for (let i = 0; i < n; i++) {
+                count += x[i];
+                if (count >= target) {
+                    leftMedian = i; break;
+                }
+            }
+            target += 1; count = 0;
+            for (let i = 0; i < n; i++) {
+                count += x[i];
+                if (count >= target) {
+                    rightMedian = i; break;
+                }
+            }
+            return (leftMedian + rightMedian)/2;
+        }
+    }
+
+}
+
+class CardGame {
+    currentRound;
+    gameStats = GameStats.createNew(10);
+
+    startNewRound() {
+        document.getElementById("additionRow").innerHTML = "";
+        document.getElementById("middleRow").innerHTML = "";
+        document.getElementById("subtractionRow").innerHTML = "";
+        this.currentRound = new CardGameRound(this);
+        this.currentRound.startRound();
+    }
+
+    reportRoundOutcome(roundOutcome) {
+        //console.log(roundOutcome);
+        this.gameStats.addRoundOutcome(roundOutcome);
+        //console.log(this.gameStats);
+        let wins = this.gameStats.getTotalWins();
+        let losses = this.gameStats.getTotalLosses();
+        document.getElementById("statsButton").innerHTML = wins + " Win" + (wins == 1 ? "" : "s") + " | " + losses + (losses == 1 ? " Loss" : " Losses");
+    }
+}
+
+class RoundOutcome {
+    allCards;
+    timeSpentPerCard = [];
+    didPlayerWin;
+    cardsDealt;
+
+    static create(allCards, timesWhenCardsDealt, didPlayerWin, cardsDealt) {
+        let x = new RoundOutcome();
+        for (let i = 0; i < timesWhenCardsDealt.length - 1; i++) {
+            x.timeSpentPerCard.push(timesWhenCardsDealt[i+1] - timesWhenCardsDealt[i]);
+        }
+        x.allCards = allCards;
+        x.didPlayerWin = didPlayerWin;
+        x.cardsDealt = cardsDealt;
+        return x;
+    }
+}
+
+class CardGameRound {
+    allCards = [];
+    cardsDealtCount = 0;
+    targetSum = 10;
+    additionButtons = [];
+    middleButtons = [];
+    subtractionButtons = [];
+    currentGuess = []; // for each card that's dealt, this will contain "add", "subtract", or "ignore"
+    solutions = [];
+    roundOutcome;
+    timesWhenCardsDealt = [];
+    game;
+
+    constructor(game) {
+        this.game = game;
+    }
+    
+    startRound() {
+        document.getElementById("roundOverSummary").style.innerHTML = "";
+        document.getElementById("roundOver").style.display = "none";
+        document.getElementById("roundInProgressSummary").innerHTML = "Target Total : " + this.targetSum;
+        document.getElementById("roundInProgressContent").style.display = "block";
+
+        while(this.solutions.length == 0) {
+            this.allCards = [];
+            while (this.allCards.length < 10 && this.solutions.length == 0) {
+                this.allCards.push(Math.floor(Math.random() * 10) + 1);
+                this.solutions = this.findSolutions(this.allCards, this.targetSum);
+            }
+        }
+        this.dealCard();
+        this.dealCard();
+        this.dealCard();
+    }
+
+    // action is 'add' , 'subtract', 'ignore'
+    handleClick(clickEvent) {
+        if (this.roundOutcome != undefined) return;
+        let cardIndex = clickEvent.currentTarget.dataset.cardIndex;
+        let action = clickEvent.currentTarget.dataset.action;
+        this.currentGuess[cardIndex] = action;
+
+        this.handleEquationUpdate();
+    }
+
+    handleEquationUpdate() {
+        for (let cardIndex = 0; cardIndex < this.cardsDealtCount; cardIndex++) {
+            this.additionButtons[cardIndex].classList.remove("selected");
+            this.middleButtons[cardIndex].classList.remove("selected");
+            this.subtractionButtons[cardIndex].classList.remove("selected");
+
+            this.additionButtons[cardIndex].querySelector(".cardButtonText").innerHTML = "+";
+            this.middleButtons[cardIndex].querySelector(".cardButtonText").innerHTML = "&osol;";
+            this.subtractionButtons[cardIndex].querySelector(".cardButtonText").innerHTML = "-";
+            if (this.currentGuess[cardIndex] == "add") {
+                this.additionButtons[cardIndex].classList.add("selected");
+                this.additionButtons[cardIndex].querySelector(".cardButtonText").innerHTML = this.allCards[cardIndex];
+            }
+            if (this.currentGuess[cardIndex] == "subtract") {
+                this.subtractionButtons[cardIndex].classList.add("selected");
+                this.subtractionButtons[cardIndex].querySelector(".cardButtonText").innerHTML = this.allCards[cardIndex];
+            }
+            if (this.currentGuess[cardIndex] == "ignore") {
+                this.middleButtons[cardIndex].classList.add("selected");
+                this.middleButtons[cardIndex].querySelector(".cardButtonText").innerHTML = this.allCards[cardIndex];
+            }
+        }
+
+        let sum = 0, subtractedCount = 0, addedCount = 0;
+        let textSummary = "", additionText = "", subtractionText = "";
+        for(let i = 0; i < this.cardsDealtCount; i++) {
+            if (this.currentGuess[i] == "add") {
+                sum += this.allCards[i];
+                addedCount++;
+                if (additionText !== "") additionText += " + ";
+                additionText += this.allCards[i];
+            } 
+            if (this.currentGuess[i] == "subtract") {
+                sum -= this.allCards[i];
+                subtractedCount++;
+                if (subtractionText !== "") subtractionText += " - ";
+                subtractionText += this.allCards[i];
+            }
+        }
+        textSummary = additionText;
+        if (subtractedCount > 0) textSummary += " - ";
+        textSummary += subtractionText;
+        if (sum == this.targetSum) {
+            textSummary += " = ";
+        } else {
+            textSummary += " <span style='color:red;font-weight:bold'>  &ne; </span>";
+        }
+        textSummary += this.targetSum;
+
+        if (sum == this.targetSum && subtractedCount == 0) {
+            textSummary += " <span style='color:green'>&#x1F5F9;</span>";
+            textSummary += "<br /><span style='color:red'>(Need to subtract at least 1 number, too)</span>";
+        }
+        if (addedCount + subtractedCount == 0) {
+            textSummary = "Target Total : " + this.targetSum;
+        }
+        document.getElementById("roundInProgressSummary").innerHTML = textSummary;
+        
+        if (sum == this.targetSum && subtractedCount > 0) {
+            this.handleWin();
+            return;
+        }
+    }
+
+
+    handleWin() {
+        this.timesWhenCardsDealt.push(Date.now());
+        this.roundOutcome = RoundOutcome.create(this.allCards, this.timesWhenCardsDealt, true /* win */, this.cardsDealtCount);
+        this.game.reportRoundOutcome(this.roundOutcome);
+
+        
+        document.getElementById("roundOverSummary").innerHTML = "<div class='youWinLabel'>You win !</div>";
+        document.getElementById("roundOver").style.display = "block";
+        document.getElementById("roundInProgressContent").style.display = "none";
+    }
+
+    handleLoss() {
+        this.roundOutcome = RoundOutcome.create(this.allCards, this.timesWhenCardsDealt, false /* didn't win */, this.cardsDealtCount);
+        this.game.reportRoundOutcome(this.roundOutcome);
+
+        let target = this.targetSum;
+        document.getElementById("roundOverSummary").innerHTML = "<table class='youLoseTable'><tr><td class='loseWarning'>You lose !</td><td class='solutionList'>"
+            + this.solutions.slice(0,4).map(sol => sol.getAsText() + " = " + target).join("<br />\n")
+            + (this.solutions.length > 4 ? ("<br />... (" + this.solutions.length + " solutions total)") : "") + "</td></tr></table>"
+        document.getElementById("roundOver").style.display = "block";
+        document.getElementById("roundInProgressContent").style.display = "none";
+    }
+
+    dealCard() {
+        this.timesWhenCardsDealt.push(Date.now());
+
+        if (this.cardsDealtCount == this.allCards.length) {
+            this.handleLoss();
+            return;
+        }
+
+        let cardSize = Math.min((this.cardsDealtCount + 1)*10 + 30,90) / (this.cardsDealtCount + 1) + "vmin";
+
+        document.querySelector(':root').style.setProperty("--card-size", cardSize);
+
+        let addButton = document.createElement("div");
+        addButton.classList.add("cardButton");
+        addButton.dataset.action = "add";
+        addButton.dataset.cardIndex = this.cardsDealtCount;
+        addButton.innerHTML = "<div class='cardButtonText'>+</div>";
+        addButton.addEventListener('click', this.handleClick.bind(this));
+        document.getElementById("additionRow").appendChild(addButton);
+        this.additionButtons.push(addButton);
+
+        let ignoreButton = document.createElement("div");
+        ignoreButton.classList.add("cardButton");
+        ignoreButton.dataset.action = "ignore";
+        ignoreButton.dataset.cardIndex = this.cardsDealtCount;
+        ignoreButton.addEventListener('click', this.handleClick.bind(this));
+        ignoreButton.innerHTML = "<div class='cardButtonText'>" + this.allCards[this.cardsDealtCount] + "</div>";
+        document.getElementById("middleRow").appendChild(ignoreButton);
+        this.middleButtons.push(ignoreButton);
+
+        let subtractButton = document.createElement("div");
+        subtractButton.classList.add("cardButton");
+        subtractButton.dataset.action = "subtract";
+        subtractButton.dataset.cardIndex = this.cardsDealtCount;
+        subtractButton.addEventListener('click', this.handleClick.bind(this));
+        subtractButton.innerHTML = "<div class='cardButtonText'>-</div>";
+        document.getElementById("subtractionRow").appendChild(subtractButton);
+        this.subtractionButtons.push(subtractButton);
+
+        this.cardsDealtCount++;
+        this.currentGuess.push("ignore");
+        this.resetEquation();
+    }
+
+    resetEquation() {
+        this.currentGuess.fill("ignore");
+
+        this.handleEquationUpdate();
+    }
+
+    findSolutions(cardHand, target) {
+        let cardCount = cardHand.length;
+        let totalPermutations = 3 ** cardCount; // ** is exponentiation
+        let digit = 0, x = 0, d = 0, addedSum = 0, subtractedSum = 0;
+        let solutionStrings = new Set(); // Set containing stringified solutions for checking whether we already found a particular solution
+        let solutions = []; // array of GameSolution objects
+        for (let p = 0; p < totalPermutations; p++) {
+            x = p;
+            addedSum = 0; subtractedSum = 0;
+            for (digit = 0; digit < cardCount; digit++) {
+                d = x % 3; // 0 means not included, 1 means added, 2 means subtracted
+                if (d == 1) addedSum += cardHand[digit];
+                if (d == 2) subtractedSum += cardHand[digit];
+                x = (x - d) / 3; // trim off the last digit (in base 3)
+            }
+            if (addedSum - subtractedSum == target && subtractedSum > 0) {
+                // Found a solution. Now figure out which cards were in it.
+                x = p;
+                let addedCards = [], subtractedCards = [];
+                for (digit = 0; digit < cardCount; digit++) {
+                    d = x % 3; // 0 means not included, 1 means added, 2 means subtracted
+                    if (d == 1) addedCards.push(cardHand[digit]);
+                    if (d == 2) subtractedCards.push(cardHand[digit]);
+                    x = (x - d) / 3; // trim off the last digit (in base 3)
+                }
+                addedCards.sort((a, b) => b - a); // descending order
+                subtractedCards.sort((a, b) => b - a);
+                let solution = new GameSolution(addedCards, subtractedCards);
+                let solutionString = solution.getAsText();
+                if (! solutionStrings.has(solutionString)) {
+                    solutionStrings.add(solutionString);
+                    solutions.push(solution);
+                }                
+            }
+        }
+        return solutions;
+    }
+}
+
+</script>
+</head>
+<body onload="initialize();">
+
+<div id="gameDisplay">
+    <div id="topBar">
+        <!-- <div id="howToPlayButton" class="button">How to Play ?</div> -->
+        <div id="statsButton" class="button">0 Wins | 0 Losses </div>
+    </div>
+    <div id="roundDisplay">
+        <div id="cardRows">
+            <div style="white-space:nowrap" id="additionRow"></div>
+            <div style="white-space:nowrap" id="middleRow"></div>
+            <div style="white-space:nowrap" id="subtractionRow"></div>
+        </div>
+        <div id="roundInProgressContent">
+            <div id="roundInProgressSummary"></div>
+            <div id="roundInProgressButtons">
+                <div onclick="game.currentRound.resetEquation();" class="button" id="resetButton">Reset</div>
+                <div onclick="game.currentRound.dealCard();" class="button" id="dealCardButton">Deal Another Card</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="roundOver">
+        <div id="roundOverSummary"></div>
+        <div onclick="game.startNewRound();" class="button" id="startRoundButton" style="position:fixed; bottom:0px;left: 50%;
+  transform: translate(-50%, 0); margin-bottom: 2vmin;">Go Again</div>
+    </div>
+    
+</div>
+
+
+</body>
+
+
+
+</html>
