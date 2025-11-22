@@ -15,6 +15,7 @@
     position: relative;
     cursor: pointer;
     background-color: white;
+    user-select:none;
     touch-action: manipulation;
 }
 
@@ -61,7 +62,11 @@
     border-bottom: 1vmin solid #444;
     padding-top:2vmin;
     padding-bottom: 2vmin;
-    min-height:calc(min(60vh,90vw));
+    min-height:calc(min(55vh,90vw));
+}
+
+#cardRows.gameOver {
+    min-height: unset;
 }
 
 #howToPlayButton {
@@ -127,6 +132,52 @@
     display: inline-block;
 }
 
+table.statsTable {
+    border-collapse: collapse;
+}
+
+table.statsTable th {
+    border: 1px solid black;
+    padding: 2vmin;
+}
+
+table.statsTable td {
+    border: 1px solid black;
+    text-align: center;
+    white-space: nowrap;
+    padding: 2vmin;
+}
+
+#statsDisplay {
+    position: relative;
+    padding-top: 17vmin;
+}
+
+.closeModal {
+  position: absolute;
+  left: 2vmin;
+  top: 2vmin;
+  width: 10vmin;
+  height: 10vmin;
+  border : 2vmin solid red;
+  cursor: pointer;
+}
+.closeModal:before, .closeModal:after {
+  position: absolute;
+  left: 4vmin;
+  content: ' ';
+  height: 10vmin;
+  width: 2vmin;
+  background-color: red;
+}
+.closeModal:before {
+  transform: rotate(45deg);
+}
+.closeModal:after {
+  transform: rotate(-45deg);
+}
+
+
 </style>
 
 
@@ -135,6 +186,11 @@ var game;
 
 function initialize() {
     game = new CardGame();
+    let previousStats = localStorage.getItem("CardGameStats");
+    if (previousStats != null) {
+        game.gameStats = Object.assign(new GameStats(), JSON.parse(previousStats));
+        game.updateStatsUI();
+    }
     game.startNewRound();
 }
 
@@ -173,6 +229,25 @@ class GameStats {
             x.timeSpentFrequencies[i].fill(0);
         }
         return x;
+    }
+
+    getStatsTableHtml() {
+        let html = "<table class='statsTable'><tr><th>Cards Shown</th><th>Accuracy</th><th>Median Time (s)</th></tr>";
+        let maxCardsSeen = 0;
+        let medians = this.getMedianTimes();
+        for (let i = 3; i <= this.maxDealableCards; i++) {
+            let outcomes = this.outcomeCountsByNumberOfCardsDealt[i];
+            let total = outcomes.win + outcomes.correctlyChoseDeal + outcomes.lose;
+            if (total == 0) {
+                break;
+            }
+            let success = outcomes.win + outcomes.correctlyChoseDeal;
+            html += "<tr><td>" + i + "</td><td>" + success + " / " + total + " (" + (success / total * 100).toFixed(1) + " %)</td>";
+            html += "<td>" + (medians[i] * 0.1).toFixed(1) + "</td></tr>";
+            maxCardsSeen = i;
+        }
+        html += "</table>";
+        return html;
     }
     
     getTotalWins() {
@@ -265,9 +340,25 @@ class CardGame {
         //console.log(roundOutcome);
         this.gameStats.addRoundOutcome(roundOutcome);
         //console.log(this.gameStats);
+        this.updateStatsUI();
+        localStorage.setItem("CardGameStats", JSON.stringify(this.gameStats));
+    }
+
+    updateStatsUI() {
         let wins = this.gameStats.getTotalWins();
         let losses = this.gameStats.getTotalLosses();
         document.getElementById("statsButton").innerHTML = wins + " Win" + (wins == 1 ? "" : "s") + " | " + losses + (losses == 1 ? " Loss" : " Losses");
+        document.getElementById("statsContent").innerHTML = this.gameStats.getStatsTableHtml();
+    }
+
+    showStatsModal() {
+        document.getElementById("statsDisplay").style.display = "block";
+        document.getElementById("gameDisplay").style.display = "none";
+    }
+
+    hideStatsModal() {
+        document.getElementById("statsDisplay").style.display = "none";
+        document.getElementById("gameDisplay").style.display = "block";
     }
 }
 
@@ -309,6 +400,7 @@ class CardGameRound {
     startRound() {
         document.getElementById("roundOverSummary").style.innerHTML = "";
         document.getElementById("roundOver").style.display = "none";
+        document.getElementById("cardRows").classList.remove("gameOver");
         document.getElementById("roundInProgressSummary").innerHTML = "Add and subtract to make " + this.targetSum;
         document.getElementById("roundInProgressContent").style.display = "block";
 
@@ -407,6 +499,7 @@ class CardGameRound {
         document.getElementById("roundOverSummary").innerHTML = "<div class='youWinLabel'>You win !</div>";
         document.getElementById("roundOver").style.display = "block";
         document.getElementById("roundInProgressContent").style.display = "none";
+        document.getElementById("cardRows").classList.add("gameOver");
     }
 
     handleLoss() {
@@ -419,6 +512,7 @@ class CardGameRound {
             + (this.solutions.length > 4 ? ("<br />... (" + this.solutions.length + " solutions total)") : "") + "</td></tr></table>"
         document.getElementById("roundOver").style.display = "block";
         document.getElementById("roundInProgressContent").style.display = "none";
+        document.getElementById("cardRows").classList.add("gameOver");
     }
 
     dealCard() {
@@ -428,7 +522,7 @@ class CardGameRound {
             this.handleLoss();
             return;
         }
-        let cardSize = "calc(min(60vh/3,90vw/" + (this.cardsDealtCount+1)+"))";
+        let cardSize = "calc(min(55vh/3,90vw/" + (this.cardsDealtCount+1)+"))";
 
         document.querySelector(':root').style.setProperty("--card-size", cardSize);
 
@@ -516,7 +610,7 @@ class CardGameRound {
 <div id="gameDisplay">
     <div id="topBar">
         <!-- <div id="howToPlayButton" class="button">How to Play ?</div> -->
-        <div id="statsButton" class="button">0 Wins | 0 Losses </div>
+        <div id="statsButton" class="button" onclick="game.showStatsModal();">0 Wins | 0 Losses </div>
     </div>
     <div id="roundDisplay">
         <div id="cardRows">
@@ -540,6 +634,12 @@ class CardGameRound {
     
 </div>
 
+<div id="statsDisplay" style="display:none">
+    <div id="closeStatsButton" class="closeModal" onclick="game.hideStatsModal();"></div>
+    <div id="statsContent">
+
+    </div>
+</div>
 
 </body>
 
