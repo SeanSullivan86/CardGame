@@ -186,10 +186,48 @@ function initialize() {
     game = new CardGame();
     let previousStats = localStorage.getItem("CardGameStats");
     if (previousStats != null) {
-        game.gameStats = Object.assign(new GameStats(), JSON.parse(previousStats));
+        game.gameStats = GameStats.fromJson(JSON.parse(previousStats));
         game.updateStatsUI();
     }
     game.startNewRound();
+}
+
+class SolutionSet {
+    solutionStrings;
+    solutions;
+
+    constructor() {
+        this.solutionStrings = new Set();
+        this.solutions = [];
+    }
+
+    addSolution(solution) {
+        let solutionString = solution.getAsText();
+        if (! this.solutionStrings.has(solutionString)) {
+            this.solutionStrings.add(solutionString);
+            this.solutions.push(solution);
+        }       
+    }
+    
+    getSolutionCount() { return this.solutions.length; }
+
+    getMinRequiredCards() {
+        if (this.solutions.length == 0) return 0;
+        let min = this.solutions[0].getCardCount();
+        for (let i = 0; i < this.solutions.length; i++) {
+            if (this.solutions[i].getCardCount() < min) min = this.solutions[i].getCardCount();
+        }
+        return min;
+    }
+
+    getMinRequiredSolutionSum() {
+        if (this.solutions.length == 0) return 0;
+        let min = this.solutions[0].getSumOfCards();
+        for (let i = 0; i < this.solutions.length; i++) {
+            if (this.solutions[i].getSumOfCards() < min) min = this.solutions[i].getSumOfCards();
+        }
+        return min;
+    }
 }
 
 class GameSolution {
@@ -201,8 +239,147 @@ class GameSolution {
         this.subtractedCards = subtractedCards;
     }
 
+    getCardCount() { return this.addedCards.length + this.subtractedCards.length; }
+
     getAsText() {
         return this.addedCards.join(" + ") + " - " + this.subtractedCards.join(" - ")
+    }
+
+    getSumOfCards() {
+        let sum = 0;
+        for (let i = 0; i < this.addedCards.length; i++) { sum += this.addedCards[i] }
+        for (let i = 0; i < this.subtractedCards.length; i++) { sum += this.subtractedCards[i] }
+        return sum;
+    }
+}
+
+class TopNRecord {
+    n;
+    topN;
+    higherIsBetter;
+
+    static fromJson(jsonObject) {
+        let x = new TopNRecord();
+        x.n = jsonObject.n;
+        x.topN = jsonObject.topN;
+        x.higherIsBetter = jsonObject.higherIsBetter;
+        return x;
+    }
+
+    static create(n, higherIsBetter) {
+        let x = new TopNRecord();
+        x.n = n;
+        x.higherIsBetter = higherIsBetter;
+        x.topN = [];
+        return x;
+    }
+
+    addGame(roundOutcome, score) {
+        if (this.topN.length < this.n || (this.higherIsBetter && (score > this.topN[this.n-1].score)) ||
+          ((! this.higherIsBetter) && (score < this.topN[this.n-1].score))) {
+
+            this.topN.push({score : score, 
+                allCards : roundOutcome.allCards, timestamp : roundOutcome.timestamp });
+            const higherIsBetter = this.higherIsBetter;
+            this.topN.sort((a,b) => {
+                let x = (a.score - b.score) * (higherIsBetter ? -1 : 1);
+                if (x != 0) return x;
+                return a.timestamp - b.timestamp;
+            });
+            if (this.topN.length > this.n) {
+                this.topN.pop();
+            }
+            let rank = 1;
+            for (let i = 0; i < this.topN.length; i++) {
+                if (this.higherIsBetter) {
+                    if (this.topN[i].score > score) rank++;
+                } else {
+                    if (this.topN[i].score < score) rank++;
+                }
+            }
+            return rank;
+        }
+        return 0;
+    }
+}
+
+class GameRecords {
+    fastestSolutionsUsingNCards;
+    fastestFullGamesWithNCardsDealt;
+    mostCardsDealt;
+    biggestSolutionSum;
+    biggestForcedSolutionSum;
+    mostSolutions;
+
+    static fromJson(jsonObject) {
+        if (jsonObject == undefined || jsonObject == null) return GameRecords.createNew();
+        let x = GameRecords.createNew();
+        if (jsonObject.fastestSolutionsUsingNCards) {
+            for (let i = 0; i < 11; i++) {
+                x.fastestSolutionsUsingNCards[i] = TopNRecord.fromJson(jsonObject.fastestSolutionsUsingNCards[i]);
+            }
+        }
+        if (jsonObject.fastestFullGamesWithNCardsDealt) {
+            for (let i = 0; i < 11; i++) {
+                x.fastestFullGamesWithNCardsDealt[i] = TopNRecord.fromJson(jsonObject.fastestFullGamesWithNCardsDealt[i]);
+            }
+        }
+        if (jsonObject.mostCardsDealt) x.mostCardsDealt = TopNRecord.fromJson(jsonObject.mostCardsDealt);
+        if (jsonObject.biggestSolutionSum) x.biggestSolutionSum = TopNRecord.fromJson(jsonObject.biggestSolutionSum);
+        if (jsonObject.biggestForcedSolutionSum) x.biggestForcedSolutionSum = TopNRecord.fromJson(jsonObject.biggestForcedSolutionSum);
+        if (jsonObject.mostSolutions) x.mostSolutions = TopNRecord.fromJson(jsonObject.mostSolutions);
+        return x;
+    }
+
+    static createNew() {
+        let x = new GameRecords();
+        x.fastestSolutionsUsingNCards = new Array(11);
+        x.fastestFullGamesWithNCardsDealt = new Array(11);
+        for (let i = 0; i < 11; i++) {
+            x.fastestSolutionsUsingNCards[i] = TopNRecord.create(3, false);
+            x.fastestFullGamesWithNCardsDealt[i] = TopNRecord.create(3, false);
+        }
+        x.mostCardsDealt = TopNRecord.create(3, true);
+        x.biggestSolutionSum = TopNRecord.create(3, true);
+        x.biggestForcedSolutionSum = TopNRecord.create(3, true);
+        x.mostSolutions = TopNRecord.create(3, true);
+        return x;
+    }
+
+    updateRecords(roundOutcome) {
+        let cardsDealt = roundOutcome.cardsDealt;
+        let newRank = 0;
+        if (roundOutcome.didPlayerWin) {
+            newRank = this.fastestSolutionsUsingNCards[roundOutcome.chosenSolution.getCardCount()]
+                .addGame(roundOutcome, roundOutcome.getTimeSpentOnLastCard());
+            if (newRank > 0) {
+                console.log("New Rank " + newRank + " score ! Fastest Time To Solve A Puzzle Using " + roundOutcome.chosenSolution.getCardCount() + " Cards : " + 
+                    roundOutcome.getTimeSpentOnLastCard()/1000 + " seconds");
+            }
+            newRank = this.fastestFullGamesWithNCardsDealt[cardsDealt].addGame(roundOutcome, roundOutcome.getTotalTime());
+            if (newRank > 0) {
+                console.log("New Rank " + newRank + " score ! Fastest Win With " + cardsDealt + " Cards Dealt : " + 
+                    roundOutcome.getTotalTime()/1000 + " seconds");
+            }
+            newRank = this.biggestSolutionSum.addGame(roundOutcome, roundOutcome.chosenSolution.getSumOfCards());
+            if (newRank > 0) {
+                console.log("New Rank " + newRank + " score ! Biggest Sum of cards used :" + roundOutcome.chosenSolution.getSumOfCards());
+            }
+        }
+
+        newRank = this.mostCardsDealt.addGame(roundOutcome, cardsDealt);
+        if (newRank > 0) {
+            console.log("New Rank " + newRank + " score ! Most Cards Dealt :" + cardsDealt);
+        }
+
+        this.biggestForcedSolutionSum.addGame(roundOutcome, roundOutcome.solutions.getMinRequiredSolutionSum());
+        if (newRank > 0) {
+            console.log("New Rank " + newRank + " score ! Highest required sum of cards needed to solve :" + roundOutcome.solutions.getMinRequiredSolutionSum());
+        }
+        this.mostSolutions.addGame(roundOutcome, roundOutcome.solutions.getSolutionCount());
+        if (newRank > 0) {
+            console.log("New Rank " + newRank + " score ! Most possible solutions to a puzzle :" + roundOutcome.solutions.getSolutionCount());
+        }
     }
 }
 
@@ -211,6 +388,17 @@ class GameStats {
     outcomeCountsByNumberOfCardsDealt;
     timeSpentFrequencies;
     maxDealableCards;
+
+    records;
+
+    static fromJson(jsonObject) {
+        let x = new GameStats();
+        x.outcomeCountsByNumberOfCardsDealt = jsonObject.outcomeCountsByNumberOfCardsDealt;
+        x.timeSpentFrequencies = jsonObject.timeSpentFrequencies;
+        x.maxDealableCards = jsonObject.maxDealableCards;
+        x.records = GameRecords.fromJson(jsonObject.records);
+        return x;
+    }
 
     static createNew(maxDealableCards) {
         let x = new GameStats();
@@ -226,6 +414,7 @@ class GameStats {
             x.timeSpentFrequencies[i] = new Array(300);
             x.timeSpentFrequencies[i].fill(0);
         }
+        x.records = GameRecords.createNew();
         return x;
     }
 
@@ -276,6 +465,7 @@ class GameStats {
         } else {
             this.outcomeCountsByNumberOfCardsDealt[cards].lose = this.outcomeCountsByNumberOfCardsDealt[cards].lose + 1;
         }
+        this.records.updateRecords(roundOutcome);
 
     }
 
@@ -365,8 +555,11 @@ class RoundOutcome {
     timeSpentPerCard = [];
     didPlayerWin;
     cardsDealt;
+    solutions;
+    timestamp;
+    chosenSolution;
 
-    static create(allCards, timesWhenCardsDealt, didPlayerWin, cardsDealt) {
+    static create(allCards, timesWhenCardsDealt, didPlayerWin, cardsDealt, solutions, timestamp, chosenSolution) {
         let x = new RoundOutcome();
         for (let i = 0; i < timesWhenCardsDealt.length - 1; i++) {
             x.timeSpentPerCard.push(timesWhenCardsDealt[i+1] - timesWhenCardsDealt[i]);
@@ -374,7 +567,22 @@ class RoundOutcome {
         x.allCards = allCards;
         x.didPlayerWin = didPlayerWin;
         x.cardsDealt = cardsDealt;
+        x.solutions = solutions;
+        x.timestamp = timestamp;
+        x.chosenSolution = chosenSolution;
         return x;
+    }
+
+    getTotalTime() {
+        let total = 0;
+        for (let i = 0; i < this.timeSpentPerCard.length; i++) {
+            total += this.timeSpentPerCard[i];
+        }
+        return total;
+    }
+
+    getTimeSpentOnLastCard() {
+        return this.timeSpentPerCard[this.cardsDealt-1];
     }
 }
 
@@ -386,7 +594,7 @@ class CardGameRound {
     middleButtons = [];
     subtractionButtons = [];
     currentGuess = []; // for each card that's dealt, this will contain "add", "subtract", or "ignore"
-    solutions = [];
+    solutions = new SolutionSet();
     roundOutcome;
     timesWhenCardsDealt = [];
     game;
@@ -402,9 +610,9 @@ class CardGameRound {
         document.getElementById("roundInProgressSummary").innerHTML = "Add and subtract to make " + this.targetSum;
         document.getElementById("roundInProgressContent").style.display = "block";
 
-        while(this.solutions.length == 0) {
+        while(this.solutions.getSolutionCount() == 0) {
             this.allCards = [];
-            while (this.allCards.length < 10 && this.solutions.length == 0) {
+            while (this.allCards.length < 10 && this.solutions.getSolutionCount() == 0) {
                 this.allCards.push(Math.floor(Math.random() * 10) + 1);
                 this.solutions = this.findSolutions(this.allCards, this.targetSum);
             }
@@ -490,7 +698,7 @@ class CardGameRound {
 
     handleWin() {
         this.timesWhenCardsDealt.push(Date.now());
-        this.roundOutcome = RoundOutcome.create(this.allCards, this.timesWhenCardsDealt, true /* win */, this.cardsDealtCount);
+        this.roundOutcome = RoundOutcome.create(this.allCards, this.timesWhenCardsDealt, true /* win */, this.cardsDealtCount, this.solutions, Date.now(), this.getCurrentGuessAsSolution());
         this.game.reportRoundOutcome(this.roundOutcome);
 
         
@@ -501,13 +709,13 @@ class CardGameRound {
     }
 
     handleLoss() {
-        this.roundOutcome = RoundOutcome.create(this.allCards, this.timesWhenCardsDealt, false /* didn't win */, this.cardsDealtCount);
+        this.roundOutcome = RoundOutcome.create(this.allCards, this.timesWhenCardsDealt, false /* didn't win */, this.cardsDealtCount, this.solutions, Date.now(), null);
         this.game.reportRoundOutcome(this.roundOutcome);
 
         let target = this.targetSum;
         document.getElementById("roundOverSummary").innerHTML = "<table class='youLoseTable'><tr><td class='loseWarning'>You lose !</td><td class='solutionList'>"
-            + this.solutions.slice(0,4).map(sol => sol.getAsText() + " = " + target).join("<br />\n")
-            + (this.solutions.length > 4 ? ("<br />... (" + this.solutions.length + " solutions total)") : "") + "</td></tr></table>"
+            + this.solutions.solutions.slice(0,4).map(sol => sol.getAsText() + " = " + target).join("<br />\n")
+            + (this.solutions.solutions.length > 4 ? ("<br />... (" + this.solutions.solutions.length + " solutions total)") : "") + "</td></tr></table>"
         document.getElementById("roundOver").style.display = "block";
         document.getElementById("roundInProgressContent").style.display = "none";
         document.getElementById("cardRows").classList.add("gameOver");
@@ -566,8 +774,7 @@ class CardGameRound {
         let cardCount = cardHand.length;
         let totalPermutations = 3 ** cardCount; // ** is exponentiation
         let digit = 0, x = 0, d = 0, addedSum = 0, subtractedSum = 0;
-        let solutionStrings = new Set(); // Set containing stringified solutions for checking whether we already found a particular solution
-        let solutions = []; // array of GameSolution objects
+        let solutions = new SolutionSet();
         for (let p = 0; p < totalPermutations; p++) {
             x = p;
             addedSum = 0; subtractedSum = 0;
@@ -589,15 +796,23 @@ class CardGameRound {
                 }
                 addedCards.sort((a, b) => b - a); // descending order
                 subtractedCards.sort((a, b) => b - a);
-                let solution = new GameSolution(addedCards, subtractedCards);
-                let solutionString = solution.getAsText();
-                if (! solutionStrings.has(solutionString)) {
-                    solutionStrings.add(solutionString);
-                    solutions.push(solution);
-                }                
+                solutions.addSolution(new GameSolution(addedCards, subtractedCards));          
             }
         }
         return solutions;
+    }
+
+    getCurrentGuessAsSolution() {
+        let added = [];
+        let subtracted = [];
+        
+        for (let i = 0; i < this.currentGuess.length; i++) {
+            if (this.currentGuess[i] == "add") added.push(this.allCards[i]);
+            else if (this.currentGuess[i] == "subtract") subtracted.push(this.allCards[i]);
+        }
+        added.sort((a, b) => b - a);
+        subtracted.sort((a, b) => b - a);
+        return new GameSolution(added, subtracted);
     }
 }
 
