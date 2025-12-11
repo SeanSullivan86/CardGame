@@ -372,11 +372,11 @@ class GameRecords {
             console.log("New Rank " + newRank + " score ! Most Cards Dealt :" + cardsDealt);
         }
 
-        this.biggestForcedSolutionSum.addGame(roundOutcome, roundOutcome.solutions.getMinRequiredSolutionSum());
+        newRank = this.biggestForcedSolutionSum.addGame(roundOutcome, roundOutcome.solutions.getMinRequiredSolutionSum());
         if (newRank > 0) {
             console.log("New Rank " + newRank + " score ! Highest required sum of cards needed to solve :" + roundOutcome.solutions.getMinRequiredSolutionSum());
         }
-        this.mostSolutions.addGame(roundOutcome, roundOutcome.solutions.getSolutionCount());
+        newRank = this.mostSolutions.addGame(roundOutcome, roundOutcome.solutions.getSolutionCount());
         if (newRank > 0) {
             console.log("New Rank " + newRank + " score ! Most possible solutions to a puzzle :" + roundOutcome.solutions.getSolutionCount());
         }
