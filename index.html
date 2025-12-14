@@ -175,6 +175,45 @@ table.statsTable td {
   transform: rotate(-45deg);
 }
 
+.statsHeaderButton {
+    color:black;
+    display:  inline-block;
+    border:  1px solid black;
+    margin: 0px 5px 3px 5px;
+    padding: 3px 5px;
+    cursor:  pointer;
+    user-select: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    background: #ddd;
+    font-weight: bold;
+}
+
+.statsheaderButton.selected {
+    border-bottom-width: 0;
+    background: #fff;
+    text-decoration: underline;
+}
+
+.timestamp {
+    color: #888;
+    font-size: 0.8rem;
+}
+
+#recordsContent {
+    width: fit-content;
+}
+
+.recordCategory {
+    margin-bottom: 10px;
+    background: #f0f0f0;
+    padding: 5px 10px;
+    border-radius: 10px;
+}
+
+.recordCategoryHeader {
+    font-weight: bold;;
+}
 
 </style>
 
@@ -542,11 +581,124 @@ class CardGame {
     showStatsModal() {
         document.getElementById("statsDisplay").style.display = "block";
         document.getElementById("gameDisplay").style.display = "none";
+        this.showTab('stats');
     }
 
     hideStatsModal() {
         document.getElementById("statsDisplay").style.display = "none";
         document.getElementById("gameDisplay").style.display = "block";
+    }
+
+    showTab(tabName) {
+        let buttons = document.getElementById('statsHeader').getElementsByClassName('statsHeaderButton');
+        for (let button of buttons) {
+            button.classList.remove("selected");
+        }
+        document.getElementById(tabName + "TabButton").classList.add("selected");
+
+        document.getElementById("statsContent").style.display = "none";
+        document.getElementById("recordsContent").style.display = "none";
+
+        if (tabName == 'records') {
+            this.updateRecordsUI();
+            document.getElementById("recordsContent").style.display = "block";
+        }
+        if (tabName == 'stats') {
+            document.getElementById("statsContent").style.display = "block";
+        }
+
+
+    };
+
+    updateRecordsUI() {
+        let html = [];
+        let records = game.gameStats.records;
+        if (!records) return;
+        let recs = records.fastestSolutionsUsingNCards;
+        if (recs) {
+            for (let i = 3; i < 11; i++) {
+                if (recs[i].topN.length > 0) {
+                    html.push("<div class='recordCategory'>");
+                    html.push("<div class='recordCategoryHeader'>Fastest Solutions Using Exactly " + i + " Cards</div>");
+                    for (let j = 0; j < recs[i].topN.length; j++) {
+                        html.push((j > 0 ? "<br />" : "") + (j+1) + " : " + (recs[i].topN[j].score / 1000).toFixed(2) + " seconds <span class=timestamp>[" + 
+                            (new Date(recs[i].topN[j].timestamp)).toLocaleString() + "]</span>");
+                    }
+                    html.push("</div>");
+
+                }
+            }
+        }
+        recs = records.fastestFullGamesWithNCardsDealt;
+        if (recs) {
+            for (let i = 3; i < 11; i++) {
+                if (recs[i].topN.length > 0) {
+                    html.push("<div class='recordCategory'>");
+                    html.push("<div class='recordCategoryHeader'>Fastest Full Games With " + i + " Cards Dealt</div>");
+                    for (let j = 0; j < recs[i].topN.length; j++) {
+                        html.push((j > 0 ? "<br />" : "") +(j+1) + " : " + (recs[i].topN[j].score / 1000).toFixed(2) + " seconds <span class=timestamp>[" + 
+                            (new Date(recs[i].topN[j].timestamp)).toLocaleString() + "]</span>");
+                    }
+                    html.push("</div>");
+                }
+            }
+        }
+
+        recs = records.biggestSolutionSum;
+        if (recs) {
+            if (recs.topN.length > 0) {
+                html.push("<div class='recordCategory'>");
+                html.push("<div class='recordCategoryHeader'>Biggest Sum of Cards Used</div>");
+                for (let j = 0; j < recs.topN.length; j++) {
+                    html.push((j > 0 ? "<br />" : "") +(j+1) + " : " + recs.topN[j].score + " <span class=timestamp>[" + 
+                        (new Date(recs.topN[j].timestamp)).toLocaleString() + "]</span>");
+                }
+                html.push("</div>");
+            }
+        }
+
+        recs = records.mostCardsDealt;
+        if (recs) {
+            if (recs.topN.length > 0) {
+                html.push("<div class='recordCategory'>");
+                html.push("<div class='recordCategoryHeader'>Most Cards Dealt</div>");
+                for (let j = 0; j < recs.topN.length; j++) {
+                    html.push((j > 0 ? "<br />" : "") +(j+1) + " : " + recs.topN[j].score + " <span class=timestamp>[" + 
+                        (new Date(recs.topN[j].timestamp)).toLocaleString() + "]</span>");
+                }
+                html.push("</div>");
+            }
+        }
+
+        // newRank = this.biggestForcedSolutionSum.addGame(roundOutcome, roundOutcome.solutions.getMinRequiredSolutionSum());
+        // console.log("New Rank " + newRank + " score ! Highest required sum of cards needed to solve :" + roundOutcome.solutions.getMinRequiredSolutionSum());
+        recs = records.biggestForcedSolutionSum;
+        if (recs) {
+            if (recs.topN.length > 0) {
+                html.push("<div class='recordCategory'>");
+                html.push("<div class='recordCategoryHeader'>Highest Required Sum of Cards Needed To Solve</div>");
+                for (let j = 0; j < recs.topN.length; j++) {
+                    html.push((j > 0 ? "<br />" : "") +(j+1) + " : " + recs.topN[j].score + " <span class=timestamp>[" + 
+                        (new Date(recs.topN[j].timestamp)).toLocaleString() + "]</span>");
+                }
+                html.push("</div>");
+            }
+        }
+        
+        recs = records.mostSolutions;
+        if (recs) {
+            if (recs.topN.length > 0) {
+                html.push("<div class='recordCategory'>");
+                html.push("<div class='recordCategoryHeader'>Most Possible Solutions to a Puzzle</div>");
+                for (let j = 0; j < recs.topN.length; j++) {
+                    html.push((j > 0 ? "<br />" : "") +(j+1) + " : " + recs.topN[j].score + " <span class=timestamp>[" + 
+                        (new Date(recs.topN[j].timestamp)).toLocaleString() + "]</span>");
+                }
+                html.push("</div>");
+            }
+        }
+
+        document.getElementById("recordsContent").innerHTML = html.join("\n");
     }
 }
 
@@ -848,10 +1000,16 @@ class CardGameRound {
 </div>
 
 <div id="statsDisplay" style="display:none">
-    <div id="closeStatsButton" class="closeModal" onclick="game.hideStatsModal();"></div>
-    <div id="statsContent">
-
+    <div id="statsHeader">
+        <div id="statsTabButton" class="statsHeaderButton" onclick="game.showTab('stats')">Stats</div>
+        <div id="recordsTabButton"  class="statsHeaderButton" onclick="game.showTab('records')">Records</div>
+        <div id="achievementsTabButton"  class="statsHeaderButton" onclick="game.showTab('achievements')">Achievements</div>
+        <!-- <div id="closeStatsButton" class="closeModal" onclick="game.hideStatsModal();"></div> -->
     </div>
+
+    <div id="statsContent"></div>
+    <div id="recordsContent"></div>
+
 </div>
 
 </body>
