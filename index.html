@@ -215,6 +215,34 @@ table.statsTable td {
     font-weight: bold;;
 }
 
+.singleGameCardHistory {
+    margin-left: 5px;
+    display: inline-block;
+}
+
+.singleCardFromHistory {
+    display: inline-block;
+    border: 1px solid #ccc;
+    padding: 1px 2px;
+    margin: 1px 1px;
+    vertical-align: top;
+}
+
+.singleCardFromHistory.ignored {
+    background-color: #e0e0e0;
+    margin-top: 4px;
+}
+
+.singleCardFromHistory.added {
+    background-color: lightgreen;
+    margin-top: 1px;
+}
+
+.singleCardFromHistory.subtracted {
+    background-color: #d0ffd0;
+    margin-top: 7px;
+}
+
 </style>
 
 
@@ -313,12 +341,39 @@ class TopNRecord {
         return x;
     }
 
+    getRank(score) {
+        let rank = 1;
+        for (let i = 0; i < this.topN.length; i++) {
+            if (this.higherIsBetter && this.topN[i].score > score) rank++;
+            else if ((!this.higherIsBetter) && this.topN[i].score < score) rank++;
+        }
+        return rank;
+    }
+
+    getSingleRecordHtml(index) {
+        let html = [];
+        html.push("<div class='singleGameCardHistory'>");
+        for (let i = 0; i < this.topN[index].allCards.length; i++) {
+            let solutionClass = "ignored";
+            if (this.topN[index].solution) {
+                if (this.topN[index].solution[i] == "+") solutionClass = "added";
+                if (this.topN[index].solution[i] == "-") solutionClass = "subtracted";
+            }
+            html.push("<div class='singleCardFromHistory " + solutionClass + "'>" 
+                + this.topN[index].allCards[i] + "</div>");
+        }
+        html.push("</div>");
+        return html.join(" ");
+    }
+
     addGame(roundOutcome, score) {
         if (this.topN.length < this.n || (this.higherIsBetter && (score > this.topN[this.n-1].score)) ||
           ((! this.higherIsBetter) && (score < this.topN[this.n-1].score))) {
 
             this.topN.push({score : score, 
-                allCards : roundOutcome.allCards, timestamp : roundOutcome.timestamp });
+                allCards : roundOutcome.allCards, 
+                solution : roundOutcome.chosenSolution , 
+                timestamp : roundOutcome.timestamp });
             const higherIsBetter = this.higherIsBetter;
             this.topN.sort((a,b) => {
                 let x = (a.score - b.score) * (higherIsBetter ? -1 : 1);
@@ -388,11 +443,18 @@ class GameRecords {
     updateRecords(roundOutcome) {
         let cardsDealt = roundOutcome.cardsDealt;
         let newRank = 0;
+       
         if (roundOutcome.didPlayerWin) {
-            newRank = this.fastestSolutionsUsingNCards[roundOutcome.chosenSolution.getCardCount()]
+            let usedCardCount = roundOutcome.chosenSolution.filter(x => (x == "+" || x == "-")).length;
+            let sumOfUsedCards = 0;
+            for (let i = 0; i < roundOutcome.chosenSolution.length; i++) {
+                if (roundOutcome.chosenSolution[i] != "0") sumOfUsedCards += roundOutcome.allCards[i];
+            }
+
+            newRank = this.fastestSolutionsUsingNCards[usedCardCount]
                 .addGame(roundOutcome, roundOutcome.getTimeSpentOnLastCard());
             if (newRank > 0) {
-                console.log("New Rank " + newRank + " score ! Fastest Time To Solve A Puzzle Using " + roundOutcome.chosenSolution.getCardCount() + " Cards : " + 
+                console.log("New Rank " + newRank + " score ! Fastest Time To Solve A Puzzle Using " + usedCardCount + " Cards : " + 
                     roundOutcome.getTimeSpentOnLastCard()/1000 + " seconds");
             }
             newRank = this.fastestFullGamesWithNCardsDealt[cardsDealt].addGame(roundOutcome, roundOutcome.getTotalTime());
@@ -400,9 +462,9 @@ class GameRecords {
                 console.log("New Rank " + newRank + " score ! Fastest Win With " + cardsDealt + " Cards Dealt : " + 
                     roundOutcome.getTotalTime()/1000 + " seconds");
             }
-            newRank = this.biggestSolutionSum.addGame(roundOutcome, roundOutcome.chosenSolution.getSumOfCards());
+            newRank = this.biggestSolutionSum.addGame(roundOutcome, sumOfUsedCards);
             if (newRank > 0) {
-                console.log("New Rank " + newRank + " score ! Biggest Sum of cards used :" + roundOutcome.chosenSolution.getSumOfCards());
+                console.log("New Rank " + newRank + " score ! Biggest Sum of cards used :" + sumOfUsedCards);
             }
         }
 
@@ -621,8 +683,10 @@ class CardGame {
                     html.push("<div class='recordCategory'>");
                     html.push("<div class='recordCategoryHeader'>Fastest Solutions Using Exactly " + i + " Cards</div>");
                     for (let j = 0; j < recs[i].topN.length; j++) {
-                        html.push((j > 0 ? "<br />" : "") + (j+1) + " : " + (recs[i].topN[j].score / 1000).toFixed(2) + " seconds <span class=timestamp>[" + 
-                            (new Date(recs[i].topN[j].timestamp)).toLocaleString() + "]</span>");
+                        html.push((j > 0 ? "<br />" : "") + recs[i].getRank(recs[i].topN[j].score) + " : " 
+                            + (recs[i].topN[j].score / 1000).toFixed(2) + " <span class=timestamp>[" 
+                            + (new Date(recs[i].topN[j].timestamp)).toLocaleString() + "]</span>");
+                        html.push(recs[i].getSingleRecordHtml(j));
                     }
                     html.push("</div>");
 
@@ -636,8 +700,10 @@ class CardGame {
                     html.push("<div class='recordCategory'>");
                     html.push("<div class='recordCategoryHeader'>Fastest Full Games With " + i + " Cards Dealt</div>");
                     for (let j = 0; j < recs[i].topN.length; j++) {
-                        html.push((j > 0 ? "<br />" : "") +(j+1) + " : " + (recs[i].topN[j].score / 1000).toFixed(2) + " seconds <span class=timestamp>[" + 
-                            (new Date(recs[i].topN[j].timestamp)).toLocaleString() + "]</span>");
+                        html.push((j > 0 ? "<br />" : "") + recs[i].getRank(recs[i].topN[j].score) + " : " 
+                            + (recs[i].topN[j].score / 1000).toFixed(2) + " <span class=timestamp>[" 
+                            + (new Date(recs[i].topN[j].timestamp)).toLocaleString() + "]</span>");
+                        html.push(recs[i].getSingleRecordHtml(j));
                     }
                     html.push("</div>");
                 }
@@ -650,8 +716,9 @@ class CardGame {
                 html.push("<div class='recordCategory'>");
                 html.push("<div class='recordCategoryHeader'>Biggest Sum of Cards Used</div>");
                 for (let j = 0; j < recs.topN.length; j++) {
-                    html.push((j > 0 ? "<br />" : "") +(j+1) + " : " + recs.topN[j].score + " <span class=timestamp>[" + 
+                    html.push((j > 0 ? "<br />" : "") + recs.getRank(recs.topN[j].score) + " : " + recs.topN[j].score + " <span class=timestamp>[" + 
                         (new Date(recs.topN[j].timestamp)).toLocaleString() + "]</span>");
+                    html.push(recs.getSingleRecordHtml(j));
                 }
                 html.push("</div>");
             }
@@ -663,23 +730,23 @@ class CardGame {
                 html.push("<div class='recordCategory'>");
                 html.push("<div class='recordCategoryHeader'>Most Cards Dealt</div>");
                 for (let j = 0; j < recs.topN.length; j++) {
-                    html.push((j > 0 ? "<br />" : "") +(j+1) + " : " + recs.topN[j].score + " <span class=timestamp>[" + 
+                    html.push((j > 0 ? "<br />" : "") + recs.getRank(recs.topN[j].score) + " : " + recs.topN[j].score + " <span class=timestamp>[" + 
                         (new Date(recs.topN[j].timestamp)).toLocaleString() + "]</span>");
+                    html.push(recs.getSingleRecordHtml(j));
                 }
                 html.push("</div>");
             }
         }
 
-        // newRank = this.biggestForcedSolutionSum.addGame(roundOutcome, roundOutcome.solutions.getMinRequiredSolutionSum());
-        // console.log("New Rank " + newRank + " score ! Highest required sum of cards needed to solve :" + roundOutcome.solutions.getMinRequiredSolutionSum());
         recs = records.biggestForcedSolutionSum;
         if (recs) {
             if (recs.topN.length > 0) {
                 html.push("<div class='recordCategory'>");
                 html.push("<div class='recordCategoryHeader'>Highest Required Sum of Cards Needed To Solve</div>");
                 for (let j = 0; j < recs.topN.length; j++) {
-                    html.push((j > 0 ? "<br />" : "") +(j+1) + " : " + recs.topN[j].score + " <span class=timestamp>[" + 
+                    html.push((j > 0 ? "<br />" : "") + recs.getRank(recs.topN[j].score) + " : " + recs.topN[j].score + " <span class=timestamp>[" + 
                         (new Date(recs.topN[j].timestamp)).toLocaleString() + "]</span>");
+                    html.push(recs.getSingleRecordHtml(j));
                 }
                 html.push("</div>");
             }
@@ -691,8 +758,9 @@ class CardGame {
                 html.push("<div class='recordCategory'>");
                 html.push("<div class='recordCategoryHeader'>Most Possible Solutions to a Puzzle</div>");
                 for (let j = 0; j < recs.topN.length; j++) {
-                    html.push((j > 0 ? "<br />" : "") +(j+1) + " : " + recs.topN[j].score + " <span class=timestamp>[" + 
+                    html.push((j > 0 ? "<br />" : "") + recs.getRank(recs.topN[j].score) + " : " + recs.topN[j].score + " <span class=timestamp>[" + 
                         (new Date(recs.topN[j].timestamp)).toLocaleString() + "]</span>");
+                    html.push(recs.getSingleRecordHtml(j));
                 }
                 html.push("</div>");
             }
@@ -850,7 +918,7 @@ class CardGameRound {
 
     handleWin() {
         this.timesWhenCardsDealt.push(Date.now());
-        this.roundOutcome = RoundOutcome.create(this.allCards, this.timesWhenCardsDealt, true /* win */, this.cardsDealtCount, this.solutions, Date.now(), this.getCurrentGuessAsSolution());
+        this.roundOutcome = RoundOutcome.create(this.allCards, this.timesWhenCardsDealt, true /* win */, this.cardsDealtCount, this.solutions, Date.now(), this.getCurrentGuessShortForm());
         this.game.reportRoundOutcome(this.roundOutcome);
 
         
@@ -954,17 +1022,12 @@ class CardGameRound {
         return solutions;
     }
 
-    getCurrentGuessAsSolution() {
-        let added = [];
-        let subtracted = [];
-        
-        for (let i = 0; i < this.currentGuess.length; i++) {
-            if (this.currentGuess[i] == "add") added.push(this.allCards[i]);
-            else if (this.currentGuess[i] == "subtract") subtracted.push(this.allCards[i]);
-        }
-        added.sort((a, b) => b - a);
-        subtracted.sort((a, b) => b - a);
-        return new GameSolution(added, subtracted);
+    getCurrentGuessShortForm() {
+        return this.currentGuess.map(x => {
+            if (x == "add") return "+";
+            if (x == "subtract") return "-";
+            return "0";
+        });
     }
 }
 
