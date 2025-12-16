@@ -7,6 +7,11 @@
   --card-size: 20vmin;
 }
 
+body {
+    overscroll-behavior: none;
+    overflow-x: hidden;
+}
+
 .cardButton {
     display: inline-block;
     width: var(--card-size);
@@ -65,7 +70,7 @@
     border-bottom: 1vmin solid #444;
     padding-top:2vmin;
     padding-bottom: 2vmin;
-    min-height:calc(min(55vh,90vw));
+    min-height:calc(min(30vh,90vw));
 }
 
 #cardRows.gameOver {
@@ -147,25 +152,25 @@ table.statsTable td {
 }
 
 #statsDisplay {
-    position: relative;
-    padding-top: 17vmin;
+  position:relative;
+  width: fit-content;
 }
 
 .closeModal {
   position: absolute;
-  left: 2vmin;
-  top: 2vmin;
-  width: 10vmin;
-  height: 10vmin;
-  border : 2vmin solid red;
+  right: 0;
+  top: 0;
+  height: 1.5rem;
+  width: 1.5rem;
+  border : 0.1rem solid red;
   cursor: pointer;
 }
 .closeModal:before, .closeModal:after {
   position: absolute;
-  left: 4vmin;
+  left: 0.7rem;
   content: ' ';
-  height: 10vmin;
-  width: 2vmin;
+  height: 1.5rem;
+  width: 0.1rem;
   background-color: red;
 }
 .closeModal:before {
@@ -243,6 +248,16 @@ table.statsTable td {
     margin-top: 7px;
 }
 
+.alert {
+    margin-top: 5px;
+    margin-left: 10px;
+    border: 1px solid green;
+    padding: 3px 10px;
+    background-color: lightgreen;
+    font-family:  monospace;
+    border-radius: 8px;
+}
+
 </style>
 
 
@@ -257,6 +272,12 @@ function initialize() {
         game.updateStatsUI();
     }
     game.startNewRound();
+}
+
+let ordinals = ["0th","1st","2nd","3rd","4th","5th","6th","7th","8th","9th"];
+function getOrdinal(rank) {
+    if (rank < 10) return ordinals[rank];
+    return rank + "th";
 }
 
 class SolutionSet {
@@ -440,6 +461,12 @@ class GameRecords {
         return x;
     }
 
+    formatNewRecordAlert(rank, recordType, score) {
+        return "<span style='color:gold'>&#x1F3C6;</span> <span style='font-weight:bold; font-size: 1.3rem;'>" 
+            + getOrdinal(rank) + "</span> <span style='font-weight:bold'>Place</span><br />"
+            + recordType + " : " + score;
+    }
+
     updateRecords(roundOutcome) {
         let cardsDealt = roundOutcome.cardsDealt;
         let newRank = 0;
@@ -454,32 +481,33 @@ class GameRecords {
             newRank = this.fastestSolutionsUsingNCards[usedCardCount]
                 .addGame(roundOutcome, roundOutcome.getTimeSpentOnLastCard());
             if (newRank > 0) {
-                console.log("New Rank " + newRank + " score ! Fastest Time To Solve A Puzzle Using " + usedCardCount + " Cards : " + 
-                    roundOutcome.getTimeSpentOnLastCard()/1000 + " seconds");
+                game.addAlert(this.formatNewRecordAlert(newRank, "Fastest Solution Using " + usedCardCount + " Cards",
+                    (roundOutcome.getTimeSpentOnLastCard()/1000).toFixed(2) + " seconds"));
+                    
             }
             newRank = this.fastestFullGamesWithNCardsDealt[cardsDealt].addGame(roundOutcome, roundOutcome.getTotalTime());
             if (newRank > 0) {
-                console.log("New Rank " + newRank + " score ! Fastest Win With " + cardsDealt + " Cards Dealt : " + 
-                    roundOutcome.getTotalTime()/1000 + " seconds");
+                game.addAlert(this.formatNewRecordAlert(newRank, "Fastest Win With " + cardsDealt + " Cards Dealt",
+                    (roundOutcome.getTotalTime()/1000).toFixed(2) + " seconds"));
             }
             newRank = this.biggestSolutionSum.addGame(roundOutcome, sumOfUsedCards);
             if (newRank > 0) {
-                console.log("New Rank " + newRank + " score ! Biggest Sum of cards used :" + sumOfUsedCards);
+                game.addAlert(this.formatNewRecordAlert(newRank, "Biggest Sum of Cards Used", sumOfUsedCards));
             }
         }
 
         newRank = this.mostCardsDealt.addGame(roundOutcome, cardsDealt);
         if (newRank > 0) {
-            console.log("New Rank " + newRank + " score ! Most Cards Dealt :" + cardsDealt);
+            game.addAlert(this.formatNewRecordAlert(newRank, "Most Cards Dealt", cardsDealt));
         }
 
         newRank = this.biggestForcedSolutionSum.addGame(roundOutcome, roundOutcome.solutions.getMinRequiredSolutionSum());
         if (newRank > 0) {
-            console.log("New Rank " + newRank + " score ! Highest required sum of cards needed to solve :" + roundOutcome.solutions.getMinRequiredSolutionSum());
+            game.addAlert(this.formatNewRecordAlert(newRank, "Highest Required Sum of Cards Needed To Solve", roundOutcome.solutions.getMinRequiredSolutionSum()));
         }
         newRank = this.mostSolutions.addGame(roundOutcome, roundOutcome.solutions.getSolutionCount());
         if (newRank > 0) {
-            console.log("New Rank " + newRank + " score ! Most possible solutions to a puzzle :" + roundOutcome.solutions.getSolutionCount());
+            game.addAlert(this.formatNewRecordAlert(newRank, "Most Possible Solutions To A Puzzle", roundOutcome.solutions.getSolutionCount()));
         }
     }
 }
@@ -621,6 +649,7 @@ class CardGame {
         document.getElementById("additionRow").innerHTML = "";
         document.getElementById("middleRow").innerHTML = "";
         document.getElementById("subtractionRow").innerHTML = "";
+        document.getElementById("alerts").innerHTML = "";
         this.currentRound = new CardGameRound(this);
         this.currentRound.startRound();
     }
@@ -649,6 +678,13 @@ class CardGame {
     hideStatsModal() {
         document.getElementById("statsDisplay").style.display = "none";
         document.getElementById("gameDisplay").style.display = "block";
+    }
+
+    addAlert(alertMessage) {
+        let alert = document.createElement("div");
+        alert.classList.add("alert");
+        alert.innerHTML = alertMessage;            
+        document.getElementById("alerts").appendChild(alert);
     }
 
     showTab(tabName) {
@@ -948,7 +984,7 @@ class CardGameRound {
             this.handleLoss();
             return;
         }
-        let cardSize = "calc(min(55vh/3,90vw/" + (this.cardsDealtCount+1)+"))";
+        let cardSize = "calc(min(30vh/3,90vw/" + (this.cardsDealtCount+1)+"))";
 
         document.querySelector(':root').style.setProperty("--card-size", cardSize);
 
@@ -1058,6 +1094,7 @@ class CardGameRound {
     <div id="roundOver">
         <div id="roundOverSummary"></div>
         <div onclick="game.startNewRound();" class="button" id="startRoundButton">Go Again</div>
+        <div id="alerts"></div>
     </div>
     
 </div>
@@ -1067,7 +1104,7 @@ class CardGameRound {
         <div id="statsTabButton" class="statsHeaderButton" onclick="game.showTab('stats')">Stats</div>
         <div id="recordsTabButton"  class="statsHeaderButton" onclick="game.showTab('records')">Records</div>
         <div id="achievementsTabButton"  class="statsHeaderButton" onclick="game.showTab('achievements')">Achievements</div>
-        <!-- <div id="closeStatsButton" class="closeModal" onclick="game.hideStatsModal();"></div> -->
+        <div id="closeStatsButton" class="closeModal" onclick="game.hideStatsModal();"></div>
     </div>
 
     <div id="statsContent"></div>
