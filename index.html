@@ -994,6 +994,7 @@ class CardGameRound {
         addButton.dataset.cardIndex = this.cardsDealtCount;
         addButton.innerHTML = "<div class='cardButtonText'>+</div>";
         addButton.addEventListener('click', this.handleClick.bind(this));
+        addButton.addEventListener('touchstart', this.handleClick.bind(this));
         document.getElementById("additionRow").appendChild(addButton);
         this.additionButtons.push(addButton);
 
@@ -1002,6 +1003,7 @@ class CardGameRound {
         ignoreButton.dataset.action = "ignore";
         ignoreButton.dataset.cardIndex = this.cardsDealtCount;
         ignoreButton.addEventListener('click', this.handleClick.bind(this));
+        addButton.addEventListener('touchstart', this.handleClick.bind(this));
         ignoreButton.innerHTML = "<div class='cardButtonText'>" + this.allCards[this.cardsDealtCount] + "</div>";
         document.getElementById("middleRow").appendChild(ignoreButton);
         this.middleButtons.push(ignoreButton);
@@ -1011,6 +1013,7 @@ class CardGameRound {
         subtractButton.dataset.action = "subtract";
         subtractButton.dataset.cardIndex = this.cardsDealtCount;
         subtractButton.addEventListener('click', this.handleClick.bind(this));
+        addButton.addEventListener('touchstart', this.handleClick.bind(this));
         subtractButton.innerHTML = "<div class='cardButtonText'>-</div>";
         document.getElementById("subtractionRow").appendChild(subtractButton);
         this.subtractionButtons.push(subtractButton);
